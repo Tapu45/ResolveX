@@ -86,10 +86,9 @@ export async function hasPermission(
     const workspaceRole = user.workspaceMembers?.[0]?.role as Role | undefined;
 
     // Check if user has required role for permission
-    const allowedRoles = PERMISSIONS[permission];
-    // Keep only roles that are of the same type as those present in allowedRoles
+    const allowedRoles = Array.from(PERMISSIONS[permission]) as Role[];
     const userRoles = [orgRole, workspaceRole].filter(
-        (role): role is typeof allowedRoles[number] => role !== undefined && allowedRoles.includes(role as any)
+        (role): role is Role => role !== undefined && allowedRoles.includes(role)
     );
 
     return userRoles.length > 0;

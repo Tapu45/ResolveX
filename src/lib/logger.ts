@@ -8,13 +8,13 @@ export enum LogLevel {
     DEBUG = "DEBUG",
 }
 
-interface LogContext {
+interface LogContext<T = unknown, E = unknown> {
     timestamp: string;
     level: LogLevel;
     module: string;
     message: string;
-    data?: any;
-    error?: any;
+    data?: T;
+    error?: E;
     stack?: string;
 }
 
@@ -72,8 +72,8 @@ class Logger {
     }
 
     // ============ INFO ============
-    info(message: string, data?: any): void {
-        const context: LogContext = {
+    info<T = unknown>(message: string, data?: T): void {
+        const context: LogContext<T> = {
             timestamp: this.getTimestamp(),
             level: LogLevel.INFO,
             module: this.module,
@@ -83,9 +83,8 @@ class Logger {
         this.logToConsole(context);
     }
 
-    // ============ SUCCESS ============
-    success(message: string, data?: any): void {
-        const context: LogContext = {
+    success<T = unknown>(message: string, data?: T): void {
+        const context: LogContext<T> = {
             timestamp: this.getTimestamp(),
             level: LogLevel.SUCCESS,
             module: this.module,
@@ -95,9 +94,8 @@ class Logger {
         this.logToConsole(context);
     }
 
-    // ============ WARNING ============
-    warn(message: string, data?: any): void {
-        const context: LogContext = {
+    warn<T = unknown>(message: string, data?: T): void {
+        const context: LogContext<T> = {
             timestamp: this.getTimestamp(),
             level: LogLevel.WARN,
             module: this.module,
@@ -107,9 +105,8 @@ class Logger {
         this.logToConsole(context);
     }
 
-    // ============ DEBUG ============
-    debug(message: string, data?: any): void {
-        const context: LogContext = {
+    debug<T = unknown>(message: string, data?: T): void {
+        const context: LogContext<T> = {
             timestamp: this.getTimestamp(),
             level: LogLevel.DEBUG,
             module: this.module,
@@ -119,8 +116,7 @@ class Logger {
         this.logToConsole(context);
     }
 
-    // ============ ERROR ============
-    error(message: string, error?: any, additionalData?: any): void {
+    error<E = Error | ZodError | string | object, T = unknown>(message: string, error?: E, additionalData?: T): void {
         let errorMessage = message;
         let errorStack: string | undefined;
 
@@ -132,19 +128,19 @@ class Logger {
             additionalData = {
                 ...additionalData,
                 validationErrors: error.issues,
-            };
+            } as T;
         } else if (typeof error === "string") {
             errorMessage = `${message}: ${error}`;
         } else if (error) {
             errorMessage = `${message}: ${JSON.stringify(error)}`;
         }
 
-        const context: LogContext = {
+        const context: LogContext<T, E> = {
             timestamp: this.getTimestamp(),
             level: LogLevel.ERROR,
             module: this.module,
             message: errorMessage,
-            error: error instanceof Error ? error.message : error,
+            error: error,
             stack: errorStack,
             data: additionalData,
         };
@@ -152,9 +148,8 @@ class Logger {
         this.logToConsole(context);
     }
 
-    // ============ VALIDATION ERROR ============
-    validationError(message: string, zodError: ZodError, additionalData?: any): void {
-        const context: LogContext = {
+    validationError<T = unknown>(message: string, zodError: ZodError, additionalData?: T): void {
+        const context: LogContext<T> = {
             timestamp: this.getTimestamp(),
             level: LogLevel.ERROR,
             module: this.module,
@@ -166,15 +161,14 @@ class Logger {
                     message: issue.message,
                     code: issue.code,
                 })),
-            },
+            } as T,
         };
 
         this.logToConsole(context);
     }
 
-    // ============ REQUEST LOG ============
     logRequest(method: string, path: string, userId?: string): void {
-        const context: LogContext = {
+        const context: LogContext<{ userId?: string }> = {
             timestamp: this.getTimestamp(),
             level: LogLevel.INFO,
             module: this.module,
@@ -185,10 +179,9 @@ class Logger {
         this.logToConsole(context);
     }
 
-    // ============ RESPONSE LOG ============
-    logResponse(statusCode: number, message: string, data?: any): void {
+    logResponse<T = unknown>(statusCode: number, message: string, data?: T): void {
         const level = statusCode >= 400 ? LogLevel.WARN : LogLevel.SUCCESS;
-        const context: LogContext = {
+        const context: LogContext<T> = {
             timestamp: this.getTimestamp(),
             level,
             module: this.module,
@@ -199,7 +192,6 @@ class Logger {
         this.logToConsole(context);
     }
 }
-
 // Factory function to create logger instance
 export const createLogger = (module: string): Logger => {
     return new Logger(module);

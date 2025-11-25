@@ -8,7 +8,6 @@ import {
   Sparkle,
   Building,
   Globe,
-  X,
   ImageSquare,
 } from "@phosphor-icons/react";
 import { useState, useRef, useEffect } from "react";
@@ -73,17 +72,6 @@ export default function OnboardingPage() {
     },
   };
 
-  const headingVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        duration: 0.8,
-        ease: cubicBezier(0.34, 1.56, 0.64, 1),
-      },
-    },
-  };
 
   // Redirect if not authenticated
   useEffect(() => {
