@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { ThemeProvider } from "next-themes";
+import { AppLayout } from "@/components/shared/AppLayout";
+import { AuthProvider } from "@/context/AuthProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,7 +20,6 @@ export const metadata: Metadata = {
   title: "ProjectPulse - Enterprise Complaint Management",
   description: "AI-powered SaaS platform for managing complaints and issues",
 };
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -25,11 +27,15 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider>
-      <html lang="en">
+      <html lang="en" suppressHydrationWarning>
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >
-          {children}
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            <AuthProvider>
+              <AppLayout>{children}</AppLayout>
+            </AuthProvider>
+          </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>

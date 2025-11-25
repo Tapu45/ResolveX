@@ -63,7 +63,7 @@ const updateOrganizationSchema = z.object({
 
 async function GET(req: NextRequest) {
     try {
-        const { userId, orgId } = await auth();
+        const { userId } = await auth();
 
         logger.logRequest("GET", "/api/organizations", userId ?? undefined);
 
@@ -75,14 +75,25 @@ async function GET(req: NextRequest) {
             );
         }
 
-        logger.debug("Fetching organizations for user", { userId });
+        // Find the database user by Clerk userId
+        const dbUser = await prisma.user.findUnique({
+            where: { clerkUserId: userId },
+        });
 
-        // Get all organizations where user is a member
+        if (!dbUser) {
+            logger.warn("User not found in database", { clerkUserId: userId });
+            return NextResponse.json(
+                { error: "User not found" },
+                { status: 404 }
+            );
+        }
+
+        // Use dbUser.id for organizationMembers lookup
         const organizations = await prisma.organization.findMany({
             where: {
                 organizationMembers: {
                     some: {
-                        userId: userId,
+                        userId: dbUser.id, // Use database user ID here!
                     },
                 },
             },
@@ -158,6 +169,22 @@ async function POST(req: NextRequest) {
         logger.info("Creating organization and default workspace", { slug: validatedData.slug, userId });
 
         // Create organization and default workspace in a transaction
+        let user = await prisma.user.findUnique({
+            where: { clerkUserId: userId },
+        });
+
+        if (!user) {
+            logger.info("User not found, creating new user record", { clerkUserId: userId });
+            user = await prisma.user.create({
+                data: {
+                    clerkUserId: userId,
+                    email: "", // You'll need to fetch this from Clerk
+                    name: "", // Fetch from Clerk if available
+                },
+            });
+        }
+
+        // Create organization and default workspace in a transaction
         const organization = await prisma.$transaction(async (tx) => {
             // Create organization
             const org = await tx.organization.create({
@@ -185,11 +212,11 @@ async function POST(req: NextRequest) {
 
             logger.debug("Default workspace created", { workspaceId: workspace.id });
 
-            // Add user as organization owner
+            // Add user as organization owner - use database user.id, NOT Clerk userId
             await tx.organizationMember.create({
                 data: {
                     organizationId: org.id,
-                    userId: userId,
+                    userId: user.id, // Use database ID here!
                     role: "owner",
                     permissions: {},
                 },
@@ -201,7 +228,7 @@ async function POST(req: NextRequest) {
             await tx.workspaceMember.create({
                 data: {
                     workspaceId: workspace.id,
-                    userId: userId,
+                    userId: user.id, // Use database ID here!
                     role: "admin",
                     permissions: {},
                 },

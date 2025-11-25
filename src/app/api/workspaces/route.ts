@@ -60,51 +60,43 @@ async function GET(req: NextRequest) {
 
         if (!userId) {
             logger.warn("Unauthorized GET request - No user ID");
-            return NextResponse.json(
-                { error: "Unauthorized" },
-                { status: 401 }
-            );
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
         if (!organizationId) {
             logger.warn("Missing organizationId in GET request");
             logger.logResponse(400, "Organization ID is required");
-
-            return NextResponse.json(
-                { error: "Organization ID is required" },
-                { status: 400 }
-            );
+            return NextResponse.json({ error: "Organization ID is required" }, { status: 400 });
         }
 
-        logger.debug("Checking if user is member of organization", { organizationId, userId });
+        // Find internal user by Clerk userId
+        const dbUser = await prisma.user.findUnique({
+            where: { clerkUserId: userId },
+        });
+        if (!dbUser) {
+            logger.warn("User not found in database", { clerkUserId: userId });
+            return NextResponse.json({ error: "User not found" }, { status: 404 });
+        }
 
         // Check if user is member of organization
         const orgMember = await prisma.organizationMember.findUnique({
             where: {
                 organizationId_userId: {
                     organizationId,
-                    userId,
+                    userId: dbUser.id, // <-- Use internal user ID!
                 },
             },
         });
 
         if (!orgMember) {
-            logger.warn("User is not a member of this organization", { organizationId, userId });
+            logger.warn("User is not a member of this organization", { organizationId, userId: dbUser.id });
             logger.logResponse(403, "Access denied");
-
-            return NextResponse.json(
-                { error: "Access denied" },
-                { status: 403 }
-            );
+            return NextResponse.json({ error: "Access denied" }, { status: 403 });
         }
-
-        logger.debug("Fetching workspaces for organization", { organizationId, userId });
 
         // Get all workspaces for the organization
         const workspaces = await prisma.workspace.findMany({
-            where: {
-                organizationId,
-            },
+            where: { organizationId },
             include: {
                 workspaceMembers: true,
                 _count: {
@@ -115,33 +107,21 @@ async function GET(req: NextRequest) {
                     },
                 },
             },
-            orderBy: {
-                createdAt: "desc",
-            },
+            orderBy: { createdAt: "desc" },
         });
 
         logger.success(`Fetched ${workspaces.length} workspaces`, {
             organizationId,
-            userId,
+            userId: dbUser.id,
             count: workspaces.length,
         });
         logger.logResponse(200, "Workspaces fetched successfully");
 
-        return NextResponse.json(
-            {
-                success: true,
-                data: workspaces,
-            },
-            { status: 200 }
-        );
+        return NextResponse.json({ success: true, data: workspaces }, { status: 200 });
     } catch (error) {
         logger.error("Error fetching workspaces", error);
         logger.logResponse(500, "Failed to fetch workspaces");
-
-        return NextResponse.json(
-            { error: "Failed to fetch workspaces" },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: "Failed to fetch workspaces" }, { status: 500 });
     }
 }
 
