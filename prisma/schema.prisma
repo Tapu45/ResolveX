@@ -1,0 +1,305 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+        
+
+// Organizations table (synced with Clerk)
+model Organization {
+  id                    String   @id @default(uuid())
+  clerkOrganizationId   String   @unique @map("clerk_organization_id")
+  name                  String
+  slug                  String   @unique
+  logoUrl               String?  @map("logo_url")
+  domain                String?
+  settings              Json     @default("{}")
+  subscriptionTier      String   @default("free") @map("subscription_tier")
+  subscriptionStatus    String   @default("active") @map("subscription_status")
+  billingEmail          String?  @map("billing_email")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  workspaces            Workspace[]
+  organizationMembers  OrganizationMember[]
+  subscriptions         Subscription[]
+  usages                Usage[]
+
+  @@map("organizations")
+  @@index([clerkOrganizationId])
+}
+
+// Workspaces table
+model Workspace {
+  id            String   @id @default(uuid())
+  organizationId String  @map("organization_id")
+  name          String
+  slug          String
+  description   String?
+  settings      Json     @default("{}")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspaceMembers WorkspaceMember[]
+  projects         Project[]
+  complaints       Complaint[]
+  notifications    Notification[]
+  usages           Usage[]
+
+  @@unique([organizationId, slug])
+  @@map("workspaces")
+  @@index([organizationId])
+}
+
+// Users table (synced with Clerk)
+model User {
+  id        String   @id @default(uuid())
+  clerkUserId String @unique @map("clerk_user_id")
+  email     String
+  name      String?
+  avatarUrl String?  @map("avatar_url")
+  metadata  Json     @default("{}")
+  timezone  String   @default("UTC")
+  locale    String   @default("en")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  organizationMembers OrganizationMember[] @relation("OrganizationMembers")
+  workspaceMembers    WorkspaceMember[] @relation("WorkspaceMembers")
+  reportedComplaints  Complaint[] @relation("Reporter")
+  assignedComplaints  Complaint[] @relation("Assignee")
+  responses           Response[]
+  complaintHistories  ComplaintHistory[]
+  notifications       Notification[]
+
+  @@map("users")
+  @@index([clerkUserId])
+}
+
+// Organization members
+model OrganizationMember {
+  id           String   @id @default(uuid())
+  organizationId String @map("organization_id")
+  userId       String   @map("user_id")
+  role         String
+  permissions  Json     @default("{}")
+  joinedAt     DateTime @default(now()) @map("joined_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation("OrganizationMembers", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("organization_members")
+  @@index([organizationId])
+  @@index([userId])
+}
+
+// Workspace members
+model WorkspaceMember {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  userId      String   @map("user_id")
+  role        String
+  permissions Json     @default("{}")
+  joinedAt    DateTime @default(now()) @map("joined_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user     User      @relation("WorkspaceMembers", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+  @@index([workspaceId])
+  @@index([userId])
+}
+
+// Projects table
+model Project {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  name        String
+  description String?
+  logoUrl     String?  @map("logo_url")
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  complaints Complaint[]
+
+  @@map("projects")
+  @@index([workspaceId])
+}
+
+// Complaints table
+model Complaint {
+  id          String    @id @default(uuid())
+  workspaceId String    @map("workspace_id")
+  projectId   String?   @map("project_id")
+  reporterId  String    @map("reporter_id")
+  assigneeId  String?   @map("assignee_id")
+  title       String
+  description String
+  category    String?
+  priority    String?
+  status      String    @default("open")
+  tags        Json      @default("[]")
+  customFields Json     @default("{}") @map("custom_fields")
+  dueDate     DateTime? @map("due_date")
+  resolvedAt  DateTime? @map("resolved_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project    Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  reporter   User       @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  assignee   User?      @relation("Assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  responses  Response[]
+  attachments Attachment[]
+  histories  ComplaintHistory[]
+
+  @@map("complaints")
+  @@index([workspaceId])
+  @@index([projectId])
+  @@index([reporterId])
+  @@index([assigneeId])
+  @@index([status])
+}
+
+// Complaint history
+model ComplaintHistory {
+  id         String   @id @default(uuid())
+  complaintId String  @map("complaint_id")
+  status     String?
+  message    String?
+  createdById String  @map("created_by_id")
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  complaint Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@map("complaint_history")
+  @@index([complaintId])
+}
+
+// Responses table
+model Response {
+  id         String   @id @default(uuid())
+  complaintId String  @map("complaint_id")
+  userId     String   @map("user_id")
+  message    String
+  isInternal Boolean  @default(false) @map("is_internal")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  complaint   Complaint    @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachments Attachment[]
+
+  @@map("responses")
+  @@index([complaintId])
+  @@index([userId])
+}
+
+// Attachments table
+model Attachment {
+  id         String    @id @default(uuid())
+  complaintId String?  @map("complaint_id")
+  responseId  String?   @map("response_id")
+  fileName    String    @map("file_name")
+  fileType    String    @map("file_type")
+  filePath    String    @map("file_path")
+  fileSize    Int       @map("file_size")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  complaint Complaint? @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  response  Response?  @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  @@map("attachments")
+  @@index([complaintId])
+  @@index([responseId])
+}
+
+// Notifications table
+model Notification {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  workspaceId String  @map("workspace_id")
+  type       String
+  message    String
+  metadata   Json     @default("{}")
+  isRead     Boolean  @default(false) @map("is_read")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([isRead])
+}
+
+// Subscriptions table
+model Subscription {
+  id                  String   @id @default(uuid())
+  organizationId      String   @map("organization_id")
+  tier                String
+  status              String
+  currentPeriodStart  DateTime @map("current_period_start")
+  currentPeriodEnd    DateTime @map("current_period_end")
+  cancelAtPeriodEnd   Boolean  @default(false) @map("cancel_at_period_end")
+  stripeSubscriptionId String? @unique @map("stripe_subscription_id")
+  stripeCustomerId    String?  @map("stripe_customer_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+  @@index([organizationId])
+}
+
+// Usage tracking table
+model Usage {
+  id           String   @id @default(uuid())
+  organizationId String @map("organization_id")
+  workspaceId  String?  @map("workspace_id")
+  metric       String
+  value        Int
+  period       String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("usage")
+  @@index([organizationId])
+  @@index([workspaceId])
+}
